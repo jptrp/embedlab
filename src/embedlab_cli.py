@@ -17,6 +17,11 @@ def main():
     p1.add_argument(
         "--batch-size", type=int, default=1, help="batch size for encoding images"
     )
+    p1.add_argument(
+        "--no-metrics",
+        action="store_true",
+        help="do not write metrics.json to the output directory",
+    )
 
     p2 = sub.add_parser("search")
     p2.add_argument("--index", required=True)
@@ -24,10 +29,16 @@ def main():
     p2.add_argument("--k", type=int, default=5)
     p2.add_argument("--json", action="store_true")
     p2.add_argument(
-        "--batch-size", type=int, default=1, help="batch size for encoding query images"
+        "--batch-size",
+        type=int,
+        default=1,
+        help="batch size for encoding query images",
     )
     p2.add_argument(
-        "--seed", type=int, default=42, help="random seed used when encoding queries"
+        "--seed",
+        type=int,
+        default=42,
+        help="random seed used when encoding queries",
     )
     p2.add_argument(
         "--ann",
@@ -39,6 +50,38 @@ def main():
         type=int,
         default=10,
         help="number of trees for Annoy index",
+    )
+    p2.add_argument(
+        "--tiered",
+        action="store_true",
+        help="use ANN coarse pass then exact rerank (requires --ann)",
+    )
+    p2.add_argument(
+        "--candidates",
+        type=int,
+        default=50,
+        help="number of ANN candidates to retrieve before exact rerank",
+    )
+    p2.add_argument(
+        "--backbones",
+        nargs="*",
+        help=(
+            "optional list of backbone names for late-fusion "
+            "(requires multi-backbone index)"
+        ),
+    )
+    p2.add_argument(
+        "--q-text",
+        nargs="*",
+        help=(
+            "optional zero-shot text queries (requires CLIP). "
+            "Example: --q-text 'blue button' 'login screen'"
+        ),
+    )
+    p2.add_argument(
+        "--no-metrics",
+        action="store_true",
+        help="do not write metrics.json to the index directory",
     )
 
     p3 = sub.add_parser("analyze")
@@ -63,6 +106,11 @@ def main():
         help="number of trees for Annoy index",
     )
     p3.add_argument("--json", action="store_true")
+    p3.add_argument(
+        "--no-metrics",
+        action="store_true",
+        help="do not write metrics.json to the index directory",
+    )
 
     args = parser.parse_args()
 
@@ -82,6 +130,9 @@ def main():
             seed=args.seed,
             ann=args.ann,
             n_trees=args.n_trees,
+            tiered=args.tiered,
+            candidates=args.candidates,
+            emit_metrics=not args.no_metrics,
         )
         if args.json:
             for r in res:
@@ -99,6 +150,7 @@ def main():
             knn=args.k,
             ann=args.ann,
             n_trees=args.n_trees,
+            emit_metrics=not args.no_metrics,
         )
         if args.json:
             print(json.dumps(out))
