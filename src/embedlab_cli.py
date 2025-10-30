@@ -29,17 +29,50 @@ def main():
     p2.add_argument(
         "--seed", type=int, default=42, help="random seed used when encoding queries"
     )
+    p2.add_argument(
+        "--ann",
+        action="store_true",
+        help="use Annoy ANN for query neighbors",
+    )
+    p2.add_argument(
+        "--n-trees",
+        type=int,
+        default=10,
+        help="number of trees for Annoy index",
+    )
 
     p3 = sub.add_parser("analyze")
     p3.add_argument("--index", required=True)
     p3.add_argument("--dup-threshold", type=float, required=True)
     p3.add_argument("--anomaly-top", type=int, required=True)
+    p3.add_argument(
+        "--k",
+        type=int,
+        default=5,
+        help="k for knn graph and anomaly scoring",
+    )
+    p3.add_argument(
+        "--ann",
+        action="store_true",
+        help="use Annoy ANN for neighbors",
+    )
+    p3.add_argument(
+        "--n-trees",
+        type=int,
+        default=10,
+        help="number of trees for Annoy index",
+    )
     p3.add_argument("--json", action="store_true")
 
     args = parser.parse_args()
 
     if args.cmd == "embed":
-        op_embed(args.images_dir, args.out, seed=args.seed, batch_size=args.batch_size)
+        op_embed(
+            args.images_dir,
+            args.out,
+            seed=args.seed,
+            batch_size=args.batch_size,
+        )
     elif args.cmd == "search":
         res = topk_search(
             args.index,
@@ -47,6 +80,8 @@ def main():
             args.k,
             batch_size=args.batch_size,
             seed=args.seed,
+            ann=args.ann,
+            n_trees=args.n_trees,
         )
         if args.json:
             for r in res:
@@ -57,7 +92,14 @@ def main():
                 for it in r["results"]:
                     print(f"  {it['path']} score={it['score']:.4f}")
     elif args.cmd == "analyze":
-        out = analyze_index(args.index, args.dup_threshold, args.anomaly_top)
+        out = analyze_index(
+            args.index,
+            args.dup_threshold,
+            args.anomaly_top,
+            knn=args.k,
+            ann=args.ann,
+            n_trees=args.n_trees,
+        )
         if args.json:
             print(json.dumps(out))
         else:

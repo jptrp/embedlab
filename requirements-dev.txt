@@ -12,3 +12,6 @@ numpy==2.3.4
 mypy==1.10.1
 ruff==0.12.1
 black==24.10.0
+# Annoy and scikit-learn are optional and not pinned here because they may require a C/C++ toolchain to build on some platforms (macOS).
+# If you need ANN (Annoy) or PCA/metrics (scikit-learn), install them manually in your environment, e.g.:
+#   .venv/bin/python -m pip install annoy scikit-learn

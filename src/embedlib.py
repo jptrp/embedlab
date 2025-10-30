@@ -155,8 +155,14 @@ def op_embed(images_dir: str, out_dir: str, seed: int = 42, batch_size: int = 1)
 
 
 def topk_search(
-    index_dir: str, query_dir: str, k: int, batch_size: int = 1, seed: int = 42
-):
+    index_dir: str,
+    query_dir: str,
+    k: int,
+    batch_size: int = 1,
+    seed: int = 42,
+    ann: bool = False,
+    n_trees: int = 10,
+) -> Any:
     """Search nearest neighbors for query images.
 
     Returns a list of dicts with keys: `query`, `results` where each result includes
@@ -170,7 +176,29 @@ def topk_search(
     set_seed(seed)
     backbone = TorchResNet18Backbone(device="cpu")
     qemb = l2_normalize(backbone.encode_paths(qpaths, batch_size=batch_size))
+    # Exact similarity matrix
     S = cosine_similarity_matrix(qemb, embeddings)
+    ann_times = None
+    if ann:
+        try:
+            from annoy import AnnoyIndex
+
+            dim = int(qemb.shape[1])
+            t0 = time.time()
+            aidx = AnnoyIndex(dim, "angular")
+            # embeddings may be mmap; iterate rows
+            for ii in range(int(embeddings.shape[0])):
+                aidx.add_item(ii, embeddings[ii].astype(np.float32))
+            aidx.build(n_trees)
+            ann_build_time = time.time() - t0
+            # measure ann query time
+            t0 = time.time()
+            for qq in range(len(qemb)):
+                _ = aidx.get_nns_by_vector(qemb[qq].astype(np.float32), k)
+            ann_times = (time.time() - t0) / max(1, len(qemb))
+        except Exception:
+            ann = False
+            ann_build_time = None
     results = []
     for qi, qpath in enumerate(qpaths):
         scores = S[qi]
@@ -194,15 +222,30 @@ def topk_search(
                 "dim": meta.get("dim"),
             }
         )
+    # attach timings if ann was requested
+    if ann:
+        return {
+            "results": results,
+            "ann_build_time": ann_build_time,
+            "ann_query_time_per_query": ann_times,
+        }
     return results
 
 
-def analyze_index(index_dir: str, dup_threshold: float, anomaly_top: int, knn: int = 5):
+def analyze_index(
+    index_dir: str,
+    dup_threshold: float,
+    anomaly_top: int,
+    knn: int = 5,
+    ann: bool = False,
+    n_trees: int = 10,
+):
     paths, embeddings, meta = load_index(index_dir)
     N = int(embeddings.shape[0])
     if N == 0:
         return {"duplicate_groups": [], "anomalies": []}
-    # full similarity matrix (not filled) for scoring; use a copy for thresholding
+    # full similarity matrix (not filled) for scoring; use a copy for
+    # thresholding
     S_full = cosine_similarity_matrix(embeddings, embeddings)
     S = S_full.copy()
     np.fill_diagonal(S, -np.inf)
@@ -219,10 +262,38 @@ def analyze_index(index_dir: str, dup_threshold: float, anomaly_top: int, knn: i
         if ra != rb:
             parent[rb] = ra
 
-    for i in range(N):
-        for j in range(i + 1, N):
-            if S[i, j] + 1e-6 >= dup_threshold:
-                union(i, j)
+    # Build k-NN graph and union nodes where similarity >= threshold.
+    if ann:
+        try:
+            from annoy import AnnoyIndex
+
+            dim = int(embeddings.shape[1])
+            aidx = AnnoyIndex(dim, "angular")
+            for ii in range(N):
+                aidx.add_item(ii, embeddings[ii].astype(np.float32))
+            aidx.build(n_trees)
+            for i in range(N):
+                nbrs = aidx.get_nns_by_item(i, knn + 1)
+                # drop self if present
+                nbrs = [j for j in nbrs if j != i][:knn]
+                for j in nbrs:
+                    if S_full[i, j] + 1e-6 >= dup_threshold:
+                        union(i, j)
+        except Exception:
+            # fallback to exact
+            for i in range(N):
+                for j in range(i + 1, N):
+                    if S[i, j] + 1e-6 >= dup_threshold:
+                        union(i, j)
+    else:
+        for i in range(N):
+            # get top-k neighbors for i (excluding diagonal)
+            cos = S[i].copy()
+            cos[cos == -np.inf] = -1.0
+            idx = np.argsort(-cos)[:knn]
+            for j in idx:
+                if S_full[i, j] + 1e-6 >= dup_threshold:
+                    union(i, j)
 
     groups: Dict[int, List[int]] = {}
     for i in range(N):
