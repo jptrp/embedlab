@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+# Use --strict when running in CI / locally
+# strict = true
+
+[tool.ruff]
+line-length = 88
+
+[tool.black]
+line-length = 88
