@@ -1,6 +1,6 @@
 # Development/test requirements (minimal)
 # Use this to create a dev environment for running tests quickly.
-pytest==8.4.2
+pytest==9.0.3
 numpy==2.3.4
 
 # Runtime/image deps (optional, not required for running tests):
